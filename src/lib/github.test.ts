@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRepoUrl } from "./github";
+import { parseRepoUrl, validHomepageUrl } from "./github";
 
 describe("parseRepoUrl", () => {
   it("parses a plain repo URL", () => {
@@ -48,5 +48,29 @@ describe("parseRepoUrl", () => {
   it("rejects malformed input", () => {
     expect(parseRepoUrl("not a url")).toBeNull();
     expect(parseRepoUrl("")).toBeNull();
+  });
+});
+
+describe("validHomepageUrl", () => {
+  it("accepts an http(s) URL", () => {
+    expect(validHomepageUrl("https://cardgame-xi-orpin.vercel.app")).toBe(
+      "https://cardgame-xi-orpin.vercel.app"
+    );
+    expect(validHomepageUrl("http://example.com")).toBe("http://example.com");
+  });
+
+  it("returns null for null/undefined/empty", () => {
+    expect(validHomepageUrl(null)).toBeNull();
+    expect(validHomepageUrl(undefined)).toBeNull();
+    expect(validHomepageUrl("")).toBeNull();
+  });
+
+  it("rejects a non-http(s) scheme", () => {
+    expect(validHomepageUrl("javascript:alert(1)")).toBeNull();
+    expect(validHomepageUrl("ftp://example.com")).toBeNull();
+  });
+
+  it("rejects a bare domain with no scheme", () => {
+    expect(validHomepageUrl("example.com")).toBeNull();
   });
 });

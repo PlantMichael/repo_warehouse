@@ -122,6 +122,32 @@ manual pass through the running app pointed at the same database. Local dev now 
 Postgres connection too (no more SQLite fallback), since Prisma's datasource provider is fixed at
 schema level, not swappable per-environment via `DATABASE_URL` alone.
 
+## Live-demo fallback via a repo's GitHub "homepage" field
+
+Root-`index.html` detection intentionally only catches plain static sites - it correctly declines
+to guess at build outputs (a Godot HTML5 export, a Vite/webpack build, anything needing a build
+step), per the existing "no build-tooling detection" decision below. That's honest, but it meant
+projects genuinely deployed and runnable elsewhere (e.g. a Godot game exported and deployed to its
+own Vercel URL) showed "no preview available" even though a live, working demo existed.
+
+**Fix:** GitHub's repo metadata has a `homepage` field the owner can set to their project's live
+URL (visible in the repo's "About" sidebar on GitHub) - exactly what repos deployed this way
+already tend to have set. `fetchRepoMetadata` now reads it, `validHomepageUrl` (`src/lib/github.ts`,
+Vitest-covered) validates it's an absolute `http(s)` URL before it's ever used as an iframe `src`,
+and the detail page falls back to embedding it (via the same sandboxed `PreviewFrame` component,
+`sandbox="allow-scripts"` with no `allow-same-origin`) when there's no root `index.html` but a
+homepage is set. Backfills lazily for pre-existing catalog entries, same pattern and same
+`getProjectWithBackfill` call site as `screenshotPaths`.
+
+This is a different trust boundary than the existing static-site proxy, worth being explicit about
+(constitution Principle II, "Honest Capability Scoping"): the proxied preview only ever serves
+bytes this app fetched itself from GitHub and typed the MIME for; a homepage URL is an arbitrary
+address the repo owner chose, embedded directly, not fetched or verified by this app at all. The
+iframe sandbox still protects *this app* from that content either way (no cookie/storage access, no
+parent navigation) - so it doesn't reopen the RCE risk Principle I exists to close - but the catalog
+card badge ("▶ Runnable" vs "🔗 Live demo") and a caption on the detail page both say which kind of
+preview a visitor is looking at, rather than presenting both identically.
+
 ## Key implementation decisions
 
 - **Static-site detection is root-`index.html`-only.** No attempt to detect or run build tooling

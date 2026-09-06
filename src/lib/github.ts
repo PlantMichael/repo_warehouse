@@ -78,6 +78,23 @@ export interface RepoMetadata {
   stars: number;
   defaultBranch: string;
   isPrivate: boolean;
+  homepage: string | null;
+}
+
+/**
+ * Validates a repo's GitHub "homepage" field as a safe iframe target: must
+ * be an absolute http(s) URL. GitHub's homepage field is free-text set by
+ * the repo owner, so anything else (empty string, a bare domain, non-http
+ * schemes) is treated as not set rather than risking an unsafe iframe src.
+ */
+export function validHomepageUrl(homepage: string | null | undefined): string | null {
+  if (!homepage) return null;
+  try {
+    const url = new URL(homepage);
+    return url.protocol === "http:" || url.protocol === "https:" ? homepage : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchRepoMetadata(ref: RepoRef, accessToken?: string): Promise<RepoMetadata> {
@@ -102,6 +119,7 @@ export async function fetchRepoMetadata(ref: RepoRef, accessToken?: string): Pro
     stars: data.stargazers_count ?? 0,
     defaultBranch: data.default_branch ?? "main",
     isPrivate: data.private ?? false,
+    homepage: validHomepageUrl(data.homepage),
   };
 }
 

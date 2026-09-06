@@ -2,9 +2,12 @@
 
 Link a GitHub repository and catalog it in a searchable warehouse. If the repo is a static site (a
 plain HTML/CSS/JS site with a root `index.html`, no build step), it runs live in the browser via a
-sandboxed preview. Everything else is cataloged with its README and metadata. Sign in with GitHub
-to add a repo — either by pasting its URL or by picking one straight from your own GitHub account
-(public or private) — and browsing repos with screenshots gets a gallery on their detail page.
+sandboxed preview. If it instead has a "homepage" URL set on GitHub (common for repos deployed
+elsewhere - a game export, a Vercel/Netlify site, etc.), that live URL is embedded the same
+sandboxed way as a labeled fallback. Everything else is cataloged with its README and metadata.
+Sign in with GitHub to add a repo — either by pasting its URL or by picking one straight from your
+own GitHub account (public or private) — and browsing repos with screenshots gets a gallery on
+their detail page.
 
 ## Why it works this way
 
@@ -110,7 +113,8 @@ API at all, so previews work regardless.
   session strategy. Also exports `getGitHubAccessToken(userId)` for server-side code that needs to
   act on a signed-in user's behalf.
 - `src/lib/github.ts` — parses/validates GitHub URLs, fetches repo metadata/README/root-directory
-  listing, checks for a root `index.html`, and lists a signed-in user's own repos
+  listing, checks for a root `index.html`, validates a repo's declared "homepage" URL
+  (`validHomepageUrl`) as a safe iframe target, and lists a signed-in user's own repos
   (`listUserRepos`) — all with typed errors (`GitHubError`) for 404s, rate limits, and revoked
   authorization. Every fetch takes an optional per-request access token (falls back to the
   app-level `GITHUB_TOKEN`).
@@ -124,8 +128,8 @@ API at all, so previews work regardless.
   sign-in, validates the URL, fetches from GitHub using the signed-in user's token, persists via
   Prisma including `isPrivate`/`importedByUserId`/`screenshotPaths`, returns the existing entry if
   already imported).
-- `src/app/api/projects/[id]/route.ts` — `GET` one project (lazily backfills `screenshotPaths` if
-  never computed), `DELETE` to remove a catalog entry.
+- `src/app/api/projects/[id]/route.ts` — `GET` one project (lazily backfills `screenshotPaths`/
+  `homepageUrl` if never computed, via `src/lib/projects.ts`), `DELETE` to remove a catalog entry.
 - `src/app/api/projects/[id]/screenshots/[...path]/route.ts` — serves one screenshot's bytes;
   only ever serves a path already in that project's cached `screenshotPaths` list.
 - `src/app/api/preview/[id]/[[...path]]/route.ts` — the sandboxed-preview proxy. Fetches a file
@@ -136,7 +140,7 @@ API at all, so previews work regardless.
 - `src/lib/preview.ts` — pure helpers used by the preview route (MIME-type mapping, `<base>`-tag
   injection, path-traversal guarding), split out so they're unit-testable without a request context.
 - `prisma/schema.prisma` — `Project` (extended with `importedByUserId`/`isPrivate`/
-  `screenshotPaths`), plus Auth.js's standard `User`/`Account` models.
+  `screenshotPaths`/`homepageUrl`), plus Auth.js's standard `User`/`Account` models.
 - `src/app/page.tsx` / `src/components/Explorer.tsx` — the catalog grid, search, and the "+"
   modal for adding a repo.
 - `src/components/AddProjectModal.tsx` — "Paste URL" and "My repos" tabs; gated on sign-in.
@@ -144,7 +148,8 @@ API at all, so previews work regardless.
 - `src/components/AuthButton.tsx` / `SignInErrorBanner.tsx` — sign-in/out control and a banner for
   a denied/failed OAuth attempt.
 - `src/app/projects/[id]/page.tsx` — the detail page: name / stack info / description on the
-  left, live preview (or an explanation of why there isn't one) on the right, screenshot gallery
+  left, live preview (sandboxed static-site proxy, or the repo's declared homepage URL as a
+  labeled fallback, or an explanation of why there isn't one) on the right, screenshot gallery
   (if any PNGs were found) and README below.
 - `src/components/ScreenshotGallery.tsx` — thumbnail grid that enlarges an image on click.
 
@@ -175,3 +180,9 @@ API at all, so previews work regardless.
   publicly-browsable collection.
 - GitHub's unauthenticated rate limit (60/hour) applies to importing new repos unless
   `GITHUB_TOKEN` is set; it does not affect browsing already-imported projects or previews.
+- The "Live demo" fallback (a repo's GitHub `homepage` field) embeds a URL the repo owner chose,
+  not content this app fetched and controls the way the static-site proxy does - the detail page
+  says so explicitly, and it's still sandboxed the same way (`allow-scripts` without
+  `allow-same-origin`, so it can't read this app's cookies/storage or navigate the parent page),
+  but it's a materially different trust boundary than the proxied preview and is labeled as such
+  (constitution Principle II).

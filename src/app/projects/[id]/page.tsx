@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getProjectWithScreenshotBackfill } from "@/lib/projects";
+import { getProjectWithBackfill } from "@/lib/projects";
 import { parseScreenshotPaths } from "@/lib/screenshots";
 import PreviewFrame from "@/components/PreviewFrame";
 import DeleteButton from "@/components/DeleteButton";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = await getProjectWithScreenshotBackfill(id);
+  const project = await getProjectWithBackfill(id);
 
   if (!project) {
     notFound();
@@ -67,10 +67,28 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             <p className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Project preview</p>
             {project.isStatic ? (
               <PreviewFrame src={`/api/preview/${project.id}/`} />
+            ) : project.homepageUrl ? (
+              <>
+                <PreviewFrame src={project.homepageUrl} />
+                <p className="mt-1 text-xs text-neutral-500">
+                  Live demo at{" "}
+                  <a
+                    href={project.homepageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 hover:text-emerald-300"
+                  >
+                    {project.homepageUrl}
+                  </a>{" "}
+                  (the repo&apos;s declared homepage) - not proxied/verified by Project Warehouse, unlike the
+                  sandboxed preview for static sites.
+                </p>
+              </>
             ) : (
               <div className="h-[360px] flex items-center justify-center rounded-md border border-dashed border-neutral-700 p-4 text-center text-sm text-neutral-500">
-                No preview available - this repo has no root <code className="mx-1">index.html</code>. Project
-                Warehouse only runs static HTML/CSS/JS sites in-browser; it never executes code server-side.
+                No preview available - this repo has no root <code className="mx-1">index.html</code> or
+                declared homepage URL. Project Warehouse only runs static HTML/CSS/JS sites in-browser; it
+                never executes code server-side.
               </div>
             )}
           </div>

@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
         importedByUserId: session.user.id,
         isPrivate: metadata.isPrivate,
         screenshotPaths: JSON.stringify(screenshotPaths),
+        homepageUrl: metadata.homepage ?? "",
       },
     });
 

@@ -12,10 +12,16 @@ export default function ProjectCard({ project }: { project: Project }) {
           <p className="text-sm text-neutral-500 truncate">{project.owner}</p>
           <h3 className="font-medium truncate">{project.name}</h3>
         </div>
-        {project.isStatic && (
+        {project.isStatic ? (
           <span className="shrink-0 rounded-full bg-emerald-900/50 text-emerald-300 text-xs px-2 py-0.5 border border-emerald-800">
             ▶ Runnable
           </span>
+        ) : (
+          project.homepageUrl && (
+            <span className="shrink-0 rounded-full bg-sky-900/50 text-sky-300 text-xs px-2 py-0.5 border border-sky-800">
+              🔗 Live demo
+            </span>
+          )
         )}
       </div>
 

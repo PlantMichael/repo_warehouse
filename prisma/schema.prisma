@@ -24,6 +24,7 @@ model Project {
   importedByUser   User?    @relation(fields: [importedByUserId], references: [id])
   isPrivate        Boolean  @default(false)
   screenshotPaths  String?
+  homepageUrl      String?
 }
 
 model User {
