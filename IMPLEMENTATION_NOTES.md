@@ -26,9 +26,11 @@ safe one, rather than a larger one that either doesn't work or isn't safe to shi
 - **Next.js 16** (App Router, TypeScript) — frontend and backend (API routes) in one app, which
   kept the project small enough to actually finish: no separate client/server repos, no CORS setup,
   one dev server.
-- **Prisma + SQLite** — a single-file, zero-config database. No external service to provision for
-  a take-home; the schema (`prisma/schema.prisma`) is small enough that swapping SQLite for
-  Postgres later would just mean changing `provider` and `DATABASE_URL`.
+- **Prisma + Postgres** — originally SQLite (a single-file, zero-config database, no external
+  service to provision for a take-home); switched to a hosted Postgres instance after deploying to
+  Vercel exposed that SQLite doesn't survive a serverless environment's ephemeral filesystem (see
+  "Moving off SQLite for Vercel" below). The schema was small enough that the switch was just
+  changing `provider` in `prisma/schema.prisma` and regenerating the migration.
 - **Tailwind CSS v4** for styling; **react-markdown + remark-gfm** for rendering READMEs.
 - **Vitest** for a small unit test suite on the pure logic (URL parsing, MIME mapping, the
   `<base>`-tag injection, path-traversal guarding) — the parts worth pinning down with tests.
@@ -43,7 +45,7 @@ record: `specs/001-github-sso-repo-select/` (spec, research, data model, contrac
   the authorization-code flow re-implements security-critical plumbing (state/CSRF, cookie
   signing) for no benefit at this scope; a hosted platform (Auth0, Clerk) adds an external service
   dependency this project doesn't otherwise have. Auth.js keeps everything in the existing
-  Next.js + SQLite/Prisma stack.
+  Next.js + Prisma stack.
 - **The GitHub access token is persisted server-side (`Account.access_token` via
   `@auth/prisma-adapter`), not just held in the session JWT.** The catalog is a shared, publicly
   browsable collection - a private repo's preview/README/screenshots must keep working for
@@ -58,9 +60,8 @@ record: `specs/001-github-sso-repo-select/` (spec, research, data model, contrac
   (read/write) than this app ever exercises. A GitHub App with fine-grained read-only permissions
   would be more correct but requires a separate installation flow disproportionate to this
   feature's scope - documented as a known, accepted trade-off (see research.md §3).
-  **Follow-up flagged in the constitution:** Principle V's "no authentication layer" clause
-  predates this feature and needs a formal amendment to reflect it (see plan.md's Constitution
-  Check) - noting it here since it wasn't run in this pass.
+  Principle V's original "no authentication layer" clause has since been amended (constitution
+  v2.0.0) to formally scope this exception rather than leave it as silent drift.
 - **Private-repo file bytes go through the Contents API, not `raw.githubusercontent.com`.**
   `raw.githubusercontent.com` doesn't reliably honor an `Authorization` header for private
   content; the REST Contents API (`GET /repos/{owner}/{repo}/contents/{path}` with
@@ -81,6 +82,45 @@ record: `specs/001-github-sso-repo-select/` (spec, research, data model, contrac
   This was a deliberate, user-confirmed scope line (not "make everything require login") - the
   catalog's core value (a publicly browsable collection) is unchanged; only the "who can add to
   it" question changes.
+
+## Moving off SQLite for Vercel (post-deploy fix)
+
+Deploying to Vercel surfaced two real bugs, both since fixed:
+
+- **`src/auth.ts` never actually received GitHub OAuth credentials.** It relied on Auth.js's
+  automatic env-var inference (`AUTH_GITHUB_ID`/`AUTH_GITHUB_SECRET`), but this project's own
+  `.env.example`/README/quickstart document `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` instead - a
+  naming mismatch, so the GitHub provider had no credentials regardless of what was set. Fixed by
+  passing `clientId`/`clientSecret` explicitly from `process.env` in the provider config.
+- **Missing `trustHost: true`.** Auth.js rejects every `/api/auth/*` request by Host header in any
+  production deployment it doesn't recognize as trusted (Vercel/Cloudflare Pages are auto-detected;
+  nothing else is, by design - it's a Host-header-injection guard). Fixed by setting it explicitly,
+  standard practice for a self-hosted single-instance deployment where the Host header is trusted
+  by the deployer, consistent with this project's Principle V posture.
+
+Neither of those explained the actual crash reported, though: the site was returning a bare
+"An error occurred" on every page, which is this app's React error boundary catching a **Server
+Components render error** (React error #441) — something thrown during server-side rendering, not
+a client-side fetch failure like the two bugs above. The real cause: **no environment variables
+were configured on the Vercel project at all**, including `DATABASE_URL`. Every page queries
+`Project` via Prisma directly in a Server Component (the home page, the catalog list, project
+detail pages), so with no working database connection, literally every page threw immediately.
+
+Setting `DATABASE_URL` alone wouldn't have been a real fix, though, because **SQLite doesn't work
+on Vercel at all** - even pointed at a valid path, a serverless function's filesystem is ephemeral
+per-invocation, and `prisma/dev.db` is (correctly) gitignored, so it wouldn't even exist in the
+deployed bundle. This was a real architectural gap between the original zero-config design (a
+single, long-running local process, per constitution Principle V) and a serverless deployment
+target, not something a config tweak could paper over.
+
+**Fix:** switched `prisma/schema.prisma`'s datasource to `postgresql`, pointed at a hosted Postgres
+instance (Prisma Postgres, in this case), and replaced the SQLite migration history with a fresh
+Postgres-native one (`prisma/migrations/20260906031015_init_postgres/`) generated and applied
+against the real target database - verified with a direct CRUD round-trip (create/read/delete)
+against it, not just a successful migration run, plus a full type-check/lint/test/build pass and a
+manual pass through the running app pointed at the same database. Local dev now requires a real
+Postgres connection too (no more SQLite fallback), since Prisma's datasource provider is fixed at
+schema level, not swappable per-environment via `DATABASE_URL` alone.
 
 ## Key implementation decisions
 
@@ -116,8 +156,12 @@ record: `specs/001-github-sso-repo-select/` (spec, research, data model, contrac
   preview is a little slower than a cached version would be, and unauthenticated GitHub API calls
   for *new* imports are rate-limited to 60/hour (documented in the README, with a `GITHUB_TOKEN`
   escape hatch that raises it to 5,000/hour).
-- **SQLite over Postgres.** Chose zero-setup over "production-shaped" — right call for a
-  time-boxed local demo, wrong call if this needed concurrent writers or a real deployment target.
+- **Postgres, not SQLite.** Originally chose SQLite for zero-setup local development; switched to
+  a hosted Postgres instance once a real (serverless) deployment target was in the picture, since
+  SQLite's local file doesn't survive that environment (see "Moving off SQLite for Vercel" above).
+  The trade-off flipped from "zero external infra" to "one more account to provision," which is the
+  right call once you actually need to deploy somewhere serverless, wrong call if this only ever
+  needed to run as a single local/long-lived process.
 
 ## Known limitations
 

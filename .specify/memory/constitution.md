@@ -1,18 +1,19 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 → 2.0.0
-- Modified principles: V. Minimal, Zero-Config Operations (YAGNI) — removed the blanket "no
-  authentication layer" clause (backward-incompatible redefinition); authentication is now
-  permitted when a specific, approved feature spec requires it, scoped to what that spec states
-  (no general per-user ownership/editing/roles, catalog stays a shared public collection)
-- Added sections: none (Security Requirements gained two bullets: secrets list now includes
-  OAuth-related env vars; a new bullet requiring server-side-only access tokens)
+- Version change: 2.0.0 → 3.0.0
+- Modified principles: V. Minimal, Zero-Config Operations (YAGNI) — removed the specific "SQLite
+  via Prisma (no external DB service)" mandate (backward-incompatible redefinition); persistence is
+  now scoped to "whatever the actual deployment target requires" (local file-based store for a
+  single long-lived local process, hosted DB only when a real deployment target needs it)
+- Added sections: none (Development Workflow's schema-change bullet reworded to stay
+  provider-agnostic instead of implying a local SQLite file)
 - Removed sections: none
-- Rationale: the GitHub SSO Repo Selection feature (specs/001-github-sso-repo-select/) shipped a
-  spec-approved authentication layer (GitHub OAuth sign-in, gating who may add a catalog entry and
-  listing a signed-in user's own repos); plan.md's Constitution Check flagged this as a documented
-  Principle V deviation and recommended this amendment so the exception is ratified rather than
-  left as silent drift
+- Rationale: deploying to Vercel (a serverless platform) surfaced that SQLite's local file doesn't
+  survive an ephemeral, per-invocation filesystem - every page querying the database failed
+  immediately. Switched to a hosted Postgres instance (see IMPLEMENTATION_NOTES.md "Moving off
+  SQLite for Vercel"), which is a backward-incompatible removal of Principle V's specific
+  SQLite/no-external-service mandate, so it's ratified here rather than left as silent drift, same
+  pattern as the prior authentication-layer amendment (v2.0.0)
 - Templates requiring updates: none checked automatically by this command; downstream
   speckit-plan/speckit-tasks/speckit-checklist runs should re-read this file at execution time
 - Follow-up TODOs: none
@@ -65,23 +66,31 @@ private repo need to know which of those happened to fix it themselves; a single
 forces them to guess.
 
 ### V. Minimal, Zero-Config Operations (YAGNI)
-The project MUST default to the simplest infrastructure that satisfies its actual scope: SQLite via
-Prisma for persistence (no external DB service), no speculative multi-tenancy, and idempotent
-imports (`repoUrl` unique constraint returns the existing entry rather than erroring or
-duplicating). An authentication layer is permitted only to the extent an approved feature spec
-requires it (e.g. gating who may add a catalog entry, or identifying "your" GitHub repos) — it MUST
-NOT grow into general per-user ownership, editing rights, or roles beyond what that spec states,
-and the catalog itself MUST remain a single shared, publicly-browsable collection unless a future
-amendment says otherwise. New dependencies or infrastructure MUST be justified against this scope
-before being added, not added for hypothetical future needs.
+The project MUST default to the simplest infrastructure that satisfies its actual scope: Prisma for
+persistence against whatever datastore its actual deployment target requires (a local file-based
+store when running as a single long-lived local process; a hosted database only when a real
+deployment target — e.g. a serverless platform — makes a local file-based store nonfunctional), no
+speculative multi-tenancy, and idempotent imports (`repoUrl` unique constraint returns the existing
+entry rather than erroring or duplicating). An authentication layer is permitted only to the extent
+an approved feature spec requires it (e.g. gating who may add a catalog entry, or identifying
+"your" GitHub repos) — it MUST NOT grow into general per-user ownership, editing rights, or roles
+beyond what that spec states, and the catalog itself MUST remain a single shared,
+publicly-browsable collection unless a future amendment says otherwise. New dependencies or
+infrastructure MUST be justified against this scope before being added, not added for hypothetical
+future needs.
 **Rationale**: This is a scoped assessment project, not a product with known future requirements;
 every piece of infrastructure or abstraction beyond the current, real requirement is unjustified
 cost. Authentication was originally excluded outright, but the GitHub SSO Repo Selection feature
 (see `specs/001-github-sso-repo-select/`) established a real, spec-approved need for identity (to
 gate adding a repo and to list a signed-in user's own GitHub repos) — the principle now scopes
-*what* authentication may be used for rather than forbidding it, so future features don't have to
-silently re-justify the same deviation or, worse, drift into unscoped multi-tenancy without an
-amendment.
+*what* authentication may be used for rather than forbidding it. Similarly, persistence was
+originally locked to SQLite specifically (no external DB service, full stop); deploying to a real
+serverless target (Vercel) surfaced that SQLite's local file cannot survive that environment's
+ephemeral filesystem, forcing a hosted Postgres instance (see IMPLEMENTATION_NOTES.md "Moving off
+SQLite for Vercel") — the principle now names the actual constraint (avoid infrastructure the
+current deployment target doesn't need) rather than one specific technology, so future features
+don't have to silently re-justify the same deviation or, worse, drift into unscoped multi-tenancy
+or infrastructure sprawl without an amendment.
 
 ## Security Requirements
 
@@ -110,7 +119,8 @@ amendment.
   MUST be reflected in `README.md` and, where they affect implementation rationale, in
   `IMPLEMENTATION_NOTES.md`.
 - Schema changes MUST go through a Prisma migration (`npx prisma migrate dev`) committed to the
-  repo, not hand-edited against a running database.
+  repo, not hand-edited against a running database, and MUST be verified against a real instance of
+  the datastore the migration targets (not assumed to apply cleanly).
 
 ## Governance
 
@@ -126,4 +136,4 @@ All feature specs, plans, and task lists produced by the Spec Kit workflow for t
 be consistent with these principles; a plan that requires violating Principle I or II MUST document
 why in that plan's own complexity-justification section rather than silently deviating here.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-05 | **Last Amended**: 2026-09-05
+**Version**: 3.0.0 | **Ratified**: 2026-09-05 | **Last Amended**: 2026-09-05

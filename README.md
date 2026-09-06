@@ -27,7 +27,10 @@ browse it, "run" it on the site — but scopes "run" to something both safe and 
 ## Stack
 
 - **Next.js 16** (App Router, TypeScript) — one app for both frontend and backend (API routes)
-- **Prisma + SQLite** — zero-config local persistence, no external DB service to stand up
+- **Prisma + Postgres** — a hosted Postgres database (e.g. Vercel Postgres, Neon). Originally
+  SQLite for zero-config local persistence, but that doesn't survive a serverless deployment's
+  ephemeral filesystem, so this project runs Postgres both locally and in production instead of
+  maintaining two schemas (see [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md))
 - **Auth.js (`next-auth` v5) + `@auth/prisma-adapter`** — GitHub OAuth sign-in, JWT sessions, with
   the GitHub access token persisted server-side (never sent to the client)
 - **Tailwind CSS v4** for styling, `react-markdown` + `remark-gfm` for rendering READMEs
@@ -36,7 +39,9 @@ browse it, "run" it on the site — but scopes "run" to something both safe and 
 
 ## Setup
 
-Requires Node.js 18+.
+Requires Node.js 18+ and a Postgres database (a free instance from
+[Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres) or [Neon](https://neon.tech)
+takes a minute to create).
 
 ```bash
 npm install
@@ -46,10 +51,11 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-`npm install` also runs `prisma generate` automatically (via a `postinstall` script).
-`npx prisma migrate dev` creates the local SQLite database at `prisma/dev.db` (gitignored) from
-the schema in `prisma/schema.prisma`. There's no seed step - the catalog starts empty; add a repo
-from the UI (e.g. `https://github.com/mdn/beginner-html-site-styled` is a good static-site demo).
+`npm install` also runs `prisma generate` automatically (via a `postinstall` script). Copy
+`.env.example` to `.env` (already present) and set `DATABASE_URL` to your Postgres connection
+string before running `npx prisma migrate dev` — it applies the schema in `prisma/schema.prisma`
+to that database. There's no seed step - the catalog starts empty; add a repo from the UI (e.g.
+`https://github.com/mdn/beginner-html-site-styled` is a good static-site demo).
 
 Browsing the catalog needs no sign-in. **Adding a repository requires signing in with GitHub** —
 see "GitHub sign-in" below to set that up locally.
@@ -100,7 +106,7 @@ API at all, so previews work regardless.
 ## How it's built
 
 - `src/auth.ts` — Auth.js configuration: GitHub OAuth provider (`read:user repo` scope),
-  `@auth/prisma-adapter` (persists `User`/`Account`, including the access token, in SQLite), JWT
+  `@auth/prisma-adapter` (persists `User`/`Account`, including the access token, in Postgres), JWT
   session strategy. Also exports `getGitHubAccessToken(userId)` for server-side code that needs to
   act on a signed-in user's behalf.
 - `src/lib/github.ts` — parses/validates GitHub URLs, fetches repo metadata/README/root-directory
