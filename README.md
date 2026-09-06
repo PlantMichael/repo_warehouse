@@ -44,7 +44,20 @@ Open [http://localhost:3000](http://localhost:3000).
 
 `npm install` also runs `prisma generate` automatically (via a `postinstall` script).
 `npx prisma migrate dev` creates the local SQLite database at `prisma/dev.db` (gitignored) from
-the schema in `prisma/schema.prisma`.
+the schema in `prisma/schema.prisma`. There's no seed step - the catalog starts empty; add a repo
+from the UI (e.g. `https://github.com/mdn/beginner-html-site-styled` is a good static-site demo).
+
+No authentication and no demo credentials - the app is a single-tenant catalog with no login.
+
+### Tests
+
+```bash
+npm test
+```
+
+Runs the Vitest unit suite (`src/lib/*.test.ts`) covering GitHub URL parsing, MIME mapping, the
+preview `<base>`-tag rewriting, and path-traversal guarding - the pure logic, not the GitHub API
+integration itself (see [IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md) for why).
 
 ### Optional: raise the GitHub API rate limit
 
@@ -68,9 +81,11 @@ API at all, so previews work regardless.
   URL, fetches from GitHub, persists via Prisma, returns the existing entry if already imported).
 - `src/app/api/projects/[id]/route.ts` — `GET` one project, `DELETE` to remove a catalog entry.
 - `src/app/api/preview/[id]/[[...path]]/route.ts` — the sandboxed-preview proxy. Fetches a file
-  from the repo's raw GitHub content, and for the HTML entry point injects a `<base>` tag so
-  relative asset URLs (`./style.css`, `./script.js`, ...) resolve back through this same proxy
-  route instead of against the app's own origin.
+  from the repo's raw GitHub content, and for the HTML entry point injects a `<base>` tag (via
+  `src/lib/preview.ts`) so relative asset URLs (`./style.css`, `./script.js`, ...) resolve back
+  through this same proxy route instead of against the app's own origin.
+- `src/lib/preview.ts` — pure helpers used by the preview route (MIME-type mapping, `<base>`-tag
+  injection, path-traversal guarding), split out so they're unit-testable without a request context.
 - `prisma/schema.prisma` — a single `Project` model; see the file for fields.
 - `src/app/page.tsx` / `src/components/Explorer.tsx` — the catalog grid, search, and the "+"
   modal for adding a repo.
