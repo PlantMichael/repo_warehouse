@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchRawFile } from "@/lib/github";
 import { fetchAuthenticatedFile } from "@/lib/github-content";
-import { getGitHubAccessToken } from "@/auth";
+import { auth, getGitHubAccessToken } from "@/auth";
 import { isValidScreenshotPath, parseScreenshotPaths } from "@/lib/screenshots";
 import { mimeFor } from "@/lib/preview";
 
@@ -13,8 +13,9 @@ export async function GET(
   const { id, path: pathSegments } = await params;
   const requestedPath = pathSegments.join("/");
 
+  const session = await auth();
   const project = await prisma.project.findUnique({ where: { id } });
-  if (!project) {
+  if (!project || !session?.user?.id || project.importedByUserId !== session.user.id) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 

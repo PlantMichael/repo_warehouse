@@ -11,7 +11,7 @@ model Project {
   id               String   @id @default(cuid())
   owner            String
   name             String
-  repoUrl          String   @unique
+  repoUrl          String
   description      String?
   language         String?
   stars            Int      @default(0)
@@ -25,6 +25,8 @@ model Project {
   isPrivate        Boolean  @default(false)
   screenshotPaths  String?
   homepageUrl      String?
+
+  @@unique([importedByUserId, repoUrl])
 }
 
 model User {

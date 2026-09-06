@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { auth } from "@/auth";
 import { getProjectWithBackfill } from "@/lib/projects";
 import { parseScreenshotPaths } from "@/lib/screenshots";
 import PreviewFrame from "@/components/PreviewFrame";
@@ -12,9 +13,10 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await auth();
   const project = await getProjectWithBackfill(id);
 
-  if (!project) {
+  if (!project || !session?.user?.id || project.importedByUserId !== session.user.id) {
     notFound();
   }
 

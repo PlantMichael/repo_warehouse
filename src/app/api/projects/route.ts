@@ -12,19 +12,27 @@ import {
 import { filterPngPaths } from "@/lib/screenshots";
 
 export async function GET(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ projects: [] });
+  }
+
   const q = req.nextUrl.searchParams.get("q")?.trim();
 
   const projects = await prisma.project.findMany({
-    where: q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { owner: { contains: q } },
-            { description: { contains: q } },
-            { language: { contains: q } },
-          ],
-        }
-      : undefined,
+    where: {
+      importedByUserId: session.user.id,
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { owner: { contains: q } },
+              { description: { contains: q } },
+              { language: { contains: q } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -58,7 +66,12 @@ export async function POST(req: NextRequest) {
   }
 
   const existing = await prisma.project.findUnique({
-    where: { repoUrl: `https://github.com/${ref.owner}/${ref.name}` },
+    where: {
+      importedByUserId_repoUrl: {
+        importedByUserId: session.user.id,
+        repoUrl: `https://github.com/${ref.owner}/${ref.name}`,
+      },
+    },
   });
   if (existing) {
     return NextResponse.json({ project: existing, alreadyExisted: true }, { status: 200 });
