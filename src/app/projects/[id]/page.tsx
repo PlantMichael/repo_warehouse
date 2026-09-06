@@ -21,6 +21,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   }
 
   const screenshotPaths = parseScreenshotPaths(project.screenshotPaths) ?? [];
+  const topics: string[] = (() => {
+    try {
+      const parsed = project.topics ? JSON.parse(project.topics) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
 
   return (
     <div className="space-y-8">
@@ -66,6 +74,32 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             </div>
 
             <div className="rounded-md border border-neutral-800 p-3">
+              <p className="text-xs uppercase tracking-wide text-neutral-500">Details</p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-300">
+                <span>License: {project.license ?? "None"}</span>
+                <span>Open issues: {project.openIssues ?? "—"}</span>
+                <span>
+                  Last updated:{" "}
+                  {project.repoUpdatedAt
+                    ? new Date(project.repoUpdatedAt).toLocaleDateString()
+                    : "Unknown"}
+                </span>
+              </div>
+              {topics.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {topics.map((topic) => (
+                    <span
+                      key={topic}
+                      className="rounded-full bg-neutral-800 text-neutral-300 text-xs px-2 py-0.5 border border-neutral-700"
+                    >
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-md border border-neutral-800 p-3">
               <p className="text-xs uppercase tracking-wide text-neutral-500">Description</p>
               <p className="mt-1 text-sm text-neutral-300">
                 {project.description ?? "No description provided."}
@@ -90,14 +124,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                   >
                     {project.homepageUrl}
                   </a>{" "}
-                  (the repo&apos;s declared homepage) - not proxied/verified by Project Warehouse, unlike the
+                  (the repo&apos;s declared homepage) - not proxied/verified by Repo Warehouse, unlike the
                   sandboxed preview for static sites.
                 </p>
               </>
             ) : (
               <div className="h-[360px] flex items-center justify-center rounded-md border border-dashed border-neutral-700 p-4 text-center text-sm text-neutral-500">
                 No preview available - this repo has no root <code className="mx-1">index.html</code> or
-                declared homepage URL. Project Warehouse only runs static HTML/CSS/JS sites in-browser; it
+                declared homepage URL. Repo Warehouse only runs static HTML/CSS/JS sites in-browser; it
                 never executes code server-side.
               </div>
             )}

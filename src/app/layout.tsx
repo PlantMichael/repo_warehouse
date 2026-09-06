@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Project Warehouse",
+  title: "Repo Warehouse",
   description: "Your personal storage for GitHub repositories — yours or anyone else's.",
 };
 
@@ -33,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <header className="border-b border-neutral-800">
             <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
               <Link href="/" className="text-lg font-semibold tracking-tight">
-                📦 Project Warehouse
+                📦 Repo Warehouse
               </Link>
               <AuthButton />
             </div>

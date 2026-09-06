@@ -34,7 +34,7 @@ export default function Explorer({ initialProjects }: { initialProjects: Project
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-2xl font-semibold">Project Warehouse</h1>
+        <h1 className="text-2xl font-semibold">Repo Warehouse</h1>
         <p className="mt-1 text-neutral-400">
           Your personal storage for GitHub repos — yours or anyone else&apos;s. Sign in with GitHub and link
           any repo URL; it&apos;s saved to your account only, no one else sees it. Static sites (with a root{" "}

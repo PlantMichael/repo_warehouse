@@ -8,23 +8,27 @@ datasource db {
 }
 
 model Project {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   owner            String
   name             String
   repoUrl          String
   description      String?
   language         String?
-  stars            Int      @default(0)
+  stars            Int       @default(0)
   defaultBranch    String
   readme           String?
-  isStatic         Boolean  @default(false)
+  isStatic         Boolean   @default(false)
   entryPath        String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
   importedByUserId String?
-  importedByUser   User?    @relation(fields: [importedByUserId], references: [id])
-  isPrivate        Boolean  @default(false)
+  importedByUser   User?     @relation(fields: [importedByUserId], references: [id])
+  isPrivate        Boolean   @default(false)
   screenshotPaths  String?
   homepageUrl      String?
+  license          String?
+  topics           String?
+  openIssues       Int?
+  repoUpdatedAt    DateTime?
 
   @@unique([importedByUserId, repoUrl])
 }

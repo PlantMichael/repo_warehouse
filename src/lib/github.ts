@@ -79,6 +79,10 @@ export interface RepoMetadata {
   defaultBranch: string;
   isPrivate: boolean;
   homepage: string | null;
+  license: string | null;
+  topics: string[];
+  openIssues: number;
+  repoUpdatedAt: string | null;
 }
 
 /**
@@ -120,6 +124,10 @@ export async function fetchRepoMetadata(ref: RepoRef, accessToken?: string): Pro
     defaultBranch: data.default_branch ?? "main",
     isPrivate: data.private ?? false,
     homepage: validHomepageUrl(data.homepage),
+    license: data.license?.name ?? null,
+    topics: Array.isArray(data.topics) ? data.topics : [],
+    openIssues: data.open_issues_count ?? 0,
+    repoUpdatedAt: data.updated_at ?? null,
   };
 }
 

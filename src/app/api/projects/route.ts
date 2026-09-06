@@ -104,6 +104,10 @@ export async function POST(req: NextRequest) {
         isPrivate: metadata.isPrivate,
         screenshotPaths: JSON.stringify(screenshotPaths),
         homepageUrl: metadata.homepage ?? "",
+        license: metadata.license,
+        topics: JSON.stringify(metadata.topics),
+        openIssues: metadata.openIssues,
+        repoUpdatedAt: metadata.repoUpdatedAt ? new Date(metadata.repoUpdatedAt) : null,
       },
     });
 
