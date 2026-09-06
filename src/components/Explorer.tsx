@@ -36,8 +36,10 @@ export default function Explorer({ initialProjects }: { initialProjects: Project
       <section>
         <h1 className="text-2xl font-semibold">Project Warehouse</h1>
         <p className="mt-1 text-neutral-400">
-          Link a public GitHub repository. Static sites (with a root <code>index.html</code>) run live in a
-          sandboxed preview; everything else is cataloged with its README and metadata.
+          Your personal storage for GitHub repos — yours or anyone else&apos;s. Sign in with GitHub and link
+          any repo URL; it&apos;s saved to your account only, no one else sees it. Static sites (with a root{" "}
+          <code>index.html</code>) get a live sandboxed preview, and every project can be downloaded as a
+          zip straight from GitHub.
         </p>
       </section>
 

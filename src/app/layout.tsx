@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Project Warehouse",
-  description: "Catalog and preview GitHub repositories.",
+  description: "Your personal storage for GitHub repositories — yours or anyone else's.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

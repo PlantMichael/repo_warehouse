@@ -28,7 +28,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <Link href="/" className="text-sm text-neutral-400 hover:text-neutral-200">
           ← Back to warehouse
         </Link>
-        <DeleteButton projectId={project.id} />
+        <div className="flex items-center gap-4">
+          <a
+            href={`/api/projects/${project.id}/download`}
+            className="flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm hover:border-neutral-500"
+          >
+            ⬇ Download ZIP
+          </a>
+          <DeleteButton projectId={project.id} />
+        </div>
       </div>
 
       <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5">
