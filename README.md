@@ -1,13 +1,15 @@
-# Project Warehouse
+# Repo Warehouse
 
-Link a GitHub repository and catalog it in a searchable warehouse. If the repo is a static site (a
-plain HTML/CSS/JS site with a root `index.html`, no build step), it runs live in the browser via a
-sandboxed preview. If it instead has a "homepage" URL set on GitHub (common for repos deployed
-elsewhere - a game export, a Vercel/Netlify site, etc.), that live URL is embedded the same
-sandboxed way as a labeled fallback. Everything else is cataloged with its README and metadata.
-Sign in with GitHub to add a repo — either by pasting its URL or by picking one straight from your
-own GitHub account (public or private) — and browsing repos with screenshots gets a gallery on
-their detail page.
+Personal, per-account storage for GitHub repos — yours or anyone else's. Sign in with GitHub and
+link any repo by URL (or pick one straight from your own account, public or private); it's saved
+to your account only — a different signed-in user sees their own, separate, empty-until-populated
+warehouse, not a shared catalog. If the repo is a static site (a plain HTML/CSS/JS site with a root
+`index.html`, no build step), it runs live in the browser via a sandboxed preview. If it instead
+has a "homepage" URL set on GitHub (common for repos deployed elsewhere - a game export, a
+Vercel/Netlify site, etc.), that live URL is embedded the same sandboxed way as a labeled fallback.
+Every catalog entry also shows its license, topics, open issue count, and last-updated date, and
+can be downloaded as a zip straight from GitHub. Repos with screenshots get a gallery on their
+detail page.
 
 ## Why it works this way
 
@@ -60,8 +62,9 @@ string before running `npx prisma migrate dev` — it applies the schema in `pri
 to that database. There's no seed step - the catalog starts empty; add a repo from the UI (e.g.
 `https://github.com/mdn/beginner-html-site-styled` is a good static-site demo).
 
-Browsing the catalog needs no sign-in. **Adding a repository requires signing in with GitHub** —
-see "GitHub sign-in" below to set that up locally.
+**Every catalog action requires signing in with GitHub** — the warehouse is private, per-account
+storage, so a signed-out visitor (or a different GitHub account) sees an empty list, not someone
+else's repos. See "GitHub sign-in" below to set that up locally.
 
 ### GitHub sign-in
 
@@ -124,23 +127,31 @@ API at all, so previews work regardless.
   to root-level `.png` files, and validating a requested path against a project's cached list.
 - `src/app/api/auth/[...nextauth]/route.ts` — mounts Auth.js's handler (sign-in/callback/sign-out).
 - `src/app/api/github/repos/route.ts` — lists the signed-in user's own repos (`401` if signed out).
-- `src/app/api/projects/route.ts` — `GET` (list + search), `POST` (import a repo: requires
-  sign-in, validates the URL, fetches from GitHub using the signed-in user's token, persists via
-  Prisma including `isPrivate`/`importedByUserId`/`screenshotPaths`, returns the existing entry if
-  already imported).
+- `src/app/api/projects/route.ts` — `GET` (list + search, scoped to `importedByUserId` of the
+  signed-in user — empty list if signed out), `POST` (import a repo: requires sign-in, validates
+  the URL, fetches from GitHub using the signed-in user's token, persists via Prisma including
+  `isPrivate`/`importedByUserId`/`screenshotPaths`/`license`/`topics`/`openIssues`/
+  `repoUpdatedAt`, returns the existing entry if already imported by that same user — `repoUrl`
+  uniqueness is per-user, not global, so two different accounts can each import the same repo).
 - `src/app/api/projects/[id]/route.ts` — `GET` one project (lazily backfills `screenshotPaths`/
-  `homepageUrl` if never computed, via `src/lib/projects.ts`), `DELETE` to remove a catalog entry.
+  `homepageUrl`/`topics`/etc. if never computed, via `src/lib/projects.ts`), `DELETE` to remove a
+  catalog entry. Both 404 unless the requester is signed in as the project's `importedByUserId`.
+- `src/app/api/projects/[id]/download/route.ts` — streams the repo as a zip via GitHub's
+  `zipball` API, using the owner's stored OAuth token for private repos (never exposed to the
+  client); same ownership check as above.
 - `src/app/api/projects/[id]/screenshots/[...path]/route.ts` — serves one screenshot's bytes;
-  only ever serves a path already in that project's cached `screenshotPaths` list.
+  only ever serves a path already in that project's cached `screenshotPaths` list, and only to
+  the project's owner.
 - `src/app/api/preview/[id]/[[...path]]/route.ts` — the sandboxed-preview proxy. Fetches a file
   from the repo's raw GitHub content (or, for a private repo, via the authenticated Contents API
   using the importer's stored token), and for the HTML entry point injects a `<base>` tag (via
   `src/lib/preview.ts`) so relative asset URLs (`./style.css`, `./script.js`, ...) resolve back
-  through this same proxy route instead of against the app's own origin.
+  through this same proxy route instead of against the app's own origin. Also owner-only.
 - `src/lib/preview.ts` — pure helpers used by the preview route (MIME-type mapping, `<base>`-tag
   injection, path-traversal guarding), split out so they're unit-testable without a request context.
 - `prisma/schema.prisma` — `Project` (extended with `importedByUserId`/`isPrivate`/
-  `screenshotPaths`/`homepageUrl`), plus Auth.js's standard `User`/`Account` models.
+  `screenshotPaths`/`homepageUrl`/`license`/`topics`/`openIssues`/`repoUpdatedAt`; `repoUrl` is
+  unique per `importedByUserId`, not globally), plus Auth.js's standard `User`/`Account` models.
 - `src/app/page.tsx` / `src/components/Explorer.tsx` — the catalog grid, search, and the "+"
   modal for adding a repo.
 - `src/components/AddProjectModal.tsx` — "Paste URL" and "My repos" tabs; gated on sign-in.
@@ -175,9 +186,8 @@ API at all, so previews work regardless.
 - GitHub's classic OAuth Apps have no scope narrower than `repo` for private-repo read access, so
   sign-in requests `repo` (nominal read/write) even though this app only ever reads — see
   `specs/001-github-sso-repo-select/research.md` §3 for the full tradeoff analysis.
-- Sign-in exists to gate *adding* a repo and to list your own repos; there's still no per-user
-  ownership, editing, or roles beyond that — the catalog itself remains a single shared,
-  publicly-browsable collection.
+- Storage is per-account but flat — no folders/tags/collections beyond search, and no sharing a
+  single entry with another account short of that account importing it separately.
 - GitHub's unauthenticated rate limit (60/hour) applies to importing new repos unless
   `GITHUB_TOKEN` is set; it does not affect browsing already-imported projects or previews.
 - The "Live demo" fallback (a repo's GitHub `homepage` field) embeds a URL the repo owner chose,

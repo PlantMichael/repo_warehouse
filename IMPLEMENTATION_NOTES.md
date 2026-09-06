@@ -2,14 +2,17 @@
 
 ## What I built
 
-**Project Warehouse** — a catalog for public GitHub repositories. You link a repo by URL; the app
-fetches its metadata and README from the GitHub API and stores it. If the repo has a root
-`index.html` (a plain static HTML/CSS/JS site, no build step), it's marked "runnable" and gets a
-live preview rendered in a sandboxed iframe, proxied read-only from the repo's files on GitHub.
-Everything else is cataloged with metadata and README only.
+**Repo Warehouse** — personal, per-account storage for GitHub repositories. You sign in with GitHub
+and link a repo by URL; the app fetches its metadata (including license, topics, open issue count,
+last-updated date) and README from the GitHub API and stores it against your account only — no
+other signed-in account sees it. If the repo has a root `index.html` (a plain static HTML/CSS/JS
+site, no build step), it's marked "runnable" and gets a live preview rendered in a sandboxed
+iframe, proxied read-only from the repo's files on GitHub. Everything else is cataloged with
+metadata and README only, and any entry can be downloaded as a zip straight from GitHub.
 
-You can add a repo, browse/search the catalog, view a repo's detail page, and remove a repo from
-the catalog. See [README.md](README.md) for the full feature/architecture rundown and setup steps.
+You can add a repo, browse/search your own catalog, view a repo's detail page, download it as a
+zip, and remove it. See [README.md](README.md) for the full feature/architecture rundown and setup
+steps.
 
 ## The scope decision
 
@@ -47,10 +50,14 @@ record: `specs/001-github-sso-repo-select/` (spec, research, data model, contrac
   dependency this project doesn't otherwise have. Auth.js keeps everything in the existing
   Next.js + Prisma stack.
 - **The GitHub access token is persisted server-side (`Account.access_token` via
-  `@auth/prisma-adapter`), not just held in the session JWT.** The catalog is a shared, publicly
-  browsable collection - a private repo's preview/README/screenshots must keep working for
-  *other* visitors after the importing user's own session ends. A stateless-JWT-only session
-  can't provide that, since the token would vanish with the importer's cookie. The token is never
+  `@auth/prisma-adapter`), not just held in the session JWT.** At the time this decision was made
+  the catalog was a shared, publicly browsable collection - a private repo's preview/README/
+  screenshots had to keep working for *other* visitors after the importing user's own session
+  ended. (The catalog has since become per-account private storage — see "Personal storage, not a
+  shared catalog" below — but persisting the token server-side is still the right call: it's what
+  lets the *owner's own* later sessions, and the new zip-download route, act on their behalf
+  without re-authenticating every time.) A stateless-JWT-only session couldn't provide that, since
+  the token would vanish with the importer's cookie. The token is never
   serialized into any API response (`GET /api/auth/session` excludes it by Auth.js's own default
   session shape, which this app's `session` callback doesn't override to add it back).
 - **OAuth scope is `read:user repo`, not a narrower "public-repo-only" scope.** GitHub's classic
@@ -169,14 +176,35 @@ preview a visitor is looking at, rather than presenting both identically.
   distinct, accurate messages for "not found" vs. "rate limited" vs. "unexpected," instead of one
   generic failure message.
 
-## Tradeoffs
+## Personal storage, not a shared catalog (later revision)
 
-- **Sign-in gates adding, not deleting.** GitHub SSO (above) requires sign-in to add a repo, but
-  `DELETE /api/projects/[id]` is unchanged — still unauthenticated, matching the app's existing
-  no-per-user-ownership design (see the GitHub SSO section above: this feature deliberately didn't
-  add ownership/editing rights, just identity for the add-gate and "your repos" listing). Anyone
-  with a catalog entry's URL can still remove it. Fine for a demo; would need real per-entry
-  ownership for anything multi-user.
+The original design (above) treated the catalog as one shared, publicly-browsable collection —
+sign-in gated *adding* a repo, but browsing, viewing, and deleting were unauthenticated and global.
+That was revised once the actual requirement was clarified: each user's imports should be private
+to their own account, so a different GitHub account signing in sees an empty warehouse, not
+everyone else's repos.
+
+- Every read/write route (`list`, `create`, `get`, `delete`, the preview proxy, the screenshot
+  route, and the new download route) now filters/checks on `Project.importedByUserId` against the
+  signed-in session, 404-ing otherwise — a field that already existed on the schema from the SSO
+  feature, just wasn't used for access control until now.
+- `repoUrl`'s uniqueness moved from a global constraint to a compound `(importedByUserId, repoUrl)`
+  one, so two different accounts can independently catalog the same public repo.
+- This was a schema migration on a live (small, low-stakes) Postgres database — verified no
+  existing rows had a null owner before adding the compound unique constraint, rather than assuming.
+
+## GitHub zip download and richer repo metadata (later revision)
+
+- **Download route proxies GitHub's `zipball` API server-side** rather than linking straight to
+  `codeload.github.com`, because a plain link can't attach an `Authorization` header — private
+  repos need the owner's stored OAuth token sent server-side, with the response streamed back
+  under `Content-Disposition: attachment`. Public and private repos go through the same route for
+  one consistent code path instead of a public/private branch in the UI.
+- **License, topics, open issue count, and last-updated date** were added to `Project` and
+  populated from fields already present in the same `fetchRepoMetadata` response used since the
+  start — no new GitHub API calls for existing imports beyond what already ran, and lazily
+  backfilled for pre-existing catalog entries via the same pattern as `screenshotPaths`/
+  `homepageUrl`.
 - **No caching layer for GitHub responses.** Metadata is fetched once at import time, but preview
   file requests hit `raw.githubusercontent.com` on every load. Simpler to reason about; means the
   preview is a little slower than a cached version would be, and unauthenticated GitHub API calls
