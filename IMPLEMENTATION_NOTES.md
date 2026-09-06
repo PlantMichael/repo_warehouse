@@ -33,6 +33,55 @@ safe one, rather than a larger one that either doesn't work or isn't safe to shi
 - **Vitest** for a small unit test suite on the pure logic (URL parsing, MIME mapping, the
   `<base>`-tag injection, path-traversal guarding) — the parts worth pinning down with tests.
 
+## GitHub SSO repo selection (added after the initial build)
+
+A later feature added GitHub sign-in, letting a signed-in user browse and add from their own
+GitHub repos (public and private), and added a screenshot gallery to detail pages. Full design
+record: `specs/001-github-sso-repo-select/` (spec, research, data model, contracts, tasks).
+
+- **Auth.js (`next-auth` v5) over hand-rolled OAuth or a hosted identity platform.** Hand-rolling
+  the authorization-code flow re-implements security-critical plumbing (state/CSRF, cookie
+  signing) for no benefit at this scope; a hosted platform (Auth0, Clerk) adds an external service
+  dependency this project doesn't otherwise have. Auth.js keeps everything in the existing
+  Next.js + SQLite/Prisma stack.
+- **The GitHub access token is persisted server-side (`Account.access_token` via
+  `@auth/prisma-adapter`), not just held in the session JWT.** The catalog is a shared, publicly
+  browsable collection - a private repo's preview/README/screenshots must keep working for
+  *other* visitors after the importing user's own session ends. A stateless-JWT-only session
+  can't provide that, since the token would vanish with the importer's cookie. The token is never
+  serialized into any API response (`GET /api/auth/session` excludes it by Auth.js's own default
+  session shape, which this app's `session` callback doesn't override to add it back).
+- **OAuth scope is `read:user repo`, not a narrower "public-repo-only" scope.** GitHub's classic
+  OAuth Apps have no scope between "public repos only" (`public_repo`) and "read/write everything"
+  (`repo`) - there's no private-repo-*read-only* scope in that model. `repo` is therefore the
+  minimum scope that satisfies "select a private repo," even though it's nominally broader
+  (read/write) than this app ever exercises. A GitHub App with fine-grained read-only permissions
+  would be more correct but requires a separate installation flow disproportionate to this
+  feature's scope - documented as a known, accepted trade-off (see research.md §3).
+  **Follow-up flagged in the constitution:** Principle V's "no authentication layer" clause
+  predates this feature and needs a formal amendment to reflect it (see plan.md's Constitution
+  Check) - noting it here since it wasn't run in this pass.
+- **Private-repo file bytes go through the Contents API, not `raw.githubusercontent.com`.**
+  `raw.githubusercontent.com` doesn't reliably honor an `Authorization` header for private
+  content; the REST Contents API (`GET /repos/{owner}/{repo}/contents/{path}` with
+  `Accept: application/vnd.github.raw+json`) does, and is the same pattern already used for
+  READMEs. Public repos keep using the cheaper, already-proven raw path.
+- **Screenshot discovery is root-directory-only, computed once and cached.** Matches the existing
+  `isStatic`/`entryPath` pattern (computed at import time, read from a cached column thereafter)
+  rather than a live GitHub API call on every detail-page view. A full recursive tree walk would
+  catch screenshots in subdirectories but is unbounded in cost for large repos with no natural
+  stopping point - left as a documented scope boundary, not an oversight.
+- **The screenshot route is new, not a relaxed version of the preview proxy.** The preview proxy
+  is intentionally gated on `project.isStatic` (only "runnable" repos get a preview) and serves
+  arbitrary repo-relative paths a static site's HTML might reference. Screenshots must work for
+  *any* cataloged repo, static or not, and only ever needs to serve the specific paths already
+  discovered - so it validates the requested path against that project's cached
+  `screenshotPaths` list rather than accepting anything, a narrower and separate safety posture.
+- **Adding a repo (URL-paste or profile-pick) now requires sign-in; browsing stays fully public.**
+  This was a deliberate, user-confirmed scope line (not "make everything require login") - the
+  catalog's core value (a publicly browsable collection) is unchanged; only the "who can add to
+  it" question changes.
+
 ## Key implementation decisions
 
 - **Static-site detection is root-`index.html`-only.** No attempt to detect or run build tooling
@@ -56,9 +105,12 @@ safe one, rather than a larger one that either doesn't work or isn't safe to shi
 
 ## Tradeoffs
 
-- **No authentication.** This is a single-tenant catalog — anyone with the URL can add or delete
-  entries. Fine for a demo; would need real auth (and per-user ownership of catalog entries) for
-  anything multi-user.
+- **Sign-in gates adding, not deleting.** GitHub SSO (above) requires sign-in to add a repo, but
+  `DELETE /api/projects/[id]` is unchanged — still unauthenticated, matching the app's existing
+  no-per-user-ownership design (see the GitHub SSO section above: this feature deliberately didn't
+  add ownership/editing rights, just identity for the add-gate and "your repos" listing). Anyone
+  with a catalog entry's URL can still remove it. Fine for a demo; would need real per-entry
+  ownership for anything multi-user.
 - **No caching layer for GitHub responses.** Metadata is fetched once at import time, but preview
   file requests hit `raw.githubusercontent.com` on every load. Simpler to reason about; means the
   preview is a little slower than a cached version would be, and unauthenticated GitHub API calls
@@ -80,6 +132,11 @@ safe one, rather than a larger one that either doesn't work or isn't safe to shi
   request-shaping and error-typing logic around it is straightforward enough that I judged this an
   acceptable gap for the time box, and it was verified manually against real repos in the browser
   (see README's error-handling section for what was exercised).
+- The OAuth sign-in flow itself (GitHub SSO feature) is likewise not automated-tested, for the same
+  reason, and additionally requires a real, user-registered GitHub OAuth App to exercise at all -
+  it was verified as far as possible without one (redirect wiring, session-gating on every
+  affected route, the error-banner path) but a full sign-in round trip needs the project owner's
+  own OAuth App credentials in `.env` (see README's "GitHub sign-in" section) to verify end-to-end.
 
 ## What I'd improve with more time
 
@@ -91,6 +148,9 @@ safe one, rather than a larger one that either doesn't work or isn't safe to shi
   API, rather than unit tests on the pure helpers alone.
 - Basic rate-limiting/abuse protection on the import endpoint itself, independent of GitHub's own
   limits.
+- A GitHub App (fine-grained, read-only per-repository permissions) instead of an OAuth App's
+  broad `repo` scope, if the private-repo-access trade-off documented above ever needed tightening.
+- Recursive (or configurable-depth) screenshot discovery, instead of root-directory-only.
 
 ## AI assistance
 

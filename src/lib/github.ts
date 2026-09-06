@@ -42,19 +42,20 @@ export function parseRepoUrl(input: string): RepoRef | null {
   return { owner, name };
 }
 
-function authHeaders(): Record<string, string> {
+function authHeaders(accessToken?: string): Record<string, string> {
   const headers: Record<string, string> = {
     "User-Agent": "project-warehouse-app",
     Accept: "application/vnd.github+json",
   };
-  if (process.env.GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = accessToken ?? process.env.GITHUB_TOKEN;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 }
 
-async function githubFetch(path: string): Promise<Response> {
-  const res = await fetch(`${GITHUB_API}${path}`, { headers: authHeaders() });
+async function githubFetch(path: string, accessToken?: string): Promise<Response> {
+  const res = await fetch(`${GITHUB_API}${path}`, { headers: authHeaders(accessToken) });
 
   if (res.status === 403 || res.status === 429) {
     const remaining = res.headers.get("x-ratelimit-remaining");
@@ -76,10 +77,11 @@ export interface RepoMetadata {
   language: string | null;
   stars: number;
   defaultBranch: string;
+  isPrivate: boolean;
 }
 
-export async function fetchRepoMetadata(ref: RepoRef): Promise<RepoMetadata> {
-  const res = await githubFetch(`/repos/${ref.owner}/${ref.name}`);
+export async function fetchRepoMetadata(ref: RepoRef, accessToken?: string): Promise<RepoMetadata> {
+  const res = await githubFetch(`/repos/${ref.owner}/${ref.name}`, accessToken);
 
   if (res.status === 404) {
     throw new GitHubError(
@@ -99,11 +101,16 @@ export async function fetchRepoMetadata(ref: RepoRef): Promise<RepoMetadata> {
     language: data.language ?? null,
     stars: data.stargazers_count ?? 0,
     defaultBranch: data.default_branch ?? "main",
+    isPrivate: data.private ?? false,
   };
 }
 
-export async function fetchReadme(ref: RepoRef, branch: string): Promise<string | null> {
-  const res = await githubFetch(`/repos/${ref.owner}/${ref.name}/readme?ref=${branch}`);
+export async function fetchReadme(
+  ref: RepoRef,
+  branch: string,
+  accessToken?: string
+): Promise<string | null> {
+  const res = await githubFetch(`/repos/${ref.owner}/${ref.name}/readme?ref=${branch}`, accessToken);
   if (!res.ok) return null;
 
   const data = await res.json();
@@ -122,14 +129,97 @@ export async function fetchReadme(ref: RepoRef, branch: string): Promise<string 
  * steps (bundlers, package managers, etc.) - that would require executing
  * untrusted code server-side, which this app does not do.
  */
-export async function checkStaticEntry(ref: RepoRef, branch: string): Promise<string | null> {
-  const res = await githubFetch(`/repos/${ref.owner}/${ref.name}/contents/index.html?ref=${branch}`);
+export async function checkStaticEntry(
+  ref: RepoRef,
+  branch: string,
+  accessToken?: string
+): Promise<string | null> {
+  const res = await githubFetch(
+    `/repos/${ref.owner}/${ref.name}/contents/index.html?ref=${branch}`,
+    accessToken
+  );
   if (!res.ok) return null;
 
   const data = await res.json();
   if (Array.isArray(data) || data.type !== "file") return null;
 
   return "index.html";
+}
+
+/**
+ * Lists the entries in a repo's root directory (name/path/type), used for
+ * screenshot discovery (research.md §6). Returns an empty array if the fetch
+ * fails for any reason (e.g. empty repo) rather than throwing, since an empty
+ * gallery is a normal, non-error outcome.
+ */
+export async function fetchRepoRootEntries(
+  ref: RepoRef,
+  branch: string,
+  accessToken?: string
+): Promise<Array<{ name: string; path: string; type: string }>> {
+  const res = await githubFetch(`/repos/${ref.owner}/${ref.name}/contents/?ref=${branch}`, accessToken);
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+
+  return data.map((entry) => ({
+    name: entry.name as string,
+    path: entry.path as string,
+    type: entry.type as string,
+  }));
+}
+
+export interface UserRepoSummary {
+  name: string;
+  fullName: string;
+  description: string | null;
+  updatedAt: string;
+  isPrivate: boolean;
+  url: string;
+}
+
+const REPOS_PER_PAGE = 30;
+
+/**
+ * Lists the authenticated user's own repositories (owner affiliation only,
+ * public + private), per contracts/github-repos.md.
+ */
+export async function listUserRepos(
+  accessToken: string,
+  { q, page = 1 }: { q?: string; page?: number } = {}
+): Promise<{ repos: UserRepoSummary[]; hasMore: boolean }> {
+  const res = await githubFetch(
+    `/user/repos?affiliation=owner&visibility=all&sort=updated&per_page=${REPOS_PER_PAGE}&page=${page}`,
+    accessToken
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    throw new GitHubError(
+      "Your GitHub authorization appears to have been revoked. Please sign in again.",
+      401
+    );
+  }
+  if (!res.ok) {
+    throw new GitHubError(`GitHub API error (${res.status}) while listing your repositories.`, res.status);
+  }
+
+  const data = await res.json();
+  const repos: UserRepoSummary[] = (Array.isArray(data) ? data : [])
+    .map((repo) => ({
+      name: repo.name as string,
+      fullName: repo.full_name as string,
+      description: (repo.description as string | null) ?? null,
+      updatedAt: repo.updated_at as string,
+      isPrivate: Boolean(repo.private),
+      url: repo.html_url as string,
+    }))
+    .filter((repo) => !q || repo.name.toLowerCase().includes(q.toLowerCase()));
+
+  const linkHeader = res.headers.get("link") ?? "";
+  const hasMore = /rel="next"/.test(linkHeader);
+
+  return { repos, hasMore };
 }
 
 export async function fetchRawFile(

@@ -8,16 +8,51 @@ datasource db {
 }
 
 model Project {
-  id            String   @id @default(cuid())
-  owner         String
-  name          String
-  repoUrl       String   @unique
-  description   String?
-  language      String?
-  stars         Int      @default(0)
-  defaultBranch String
-  readme        String?
-  isStatic      Boolean  @default(false)
-  entryPath     String?
-  createdAt     DateTime @default(now())
+  id               String   @id @default(cuid())
+  owner            String
+  name             String
+  repoUrl          String   @unique
+  description      String?
+  language         String?
+  stars            Int      @default(0)
+  defaultBranch    String
+  readme           String?
+  isStatic         Boolean  @default(false)
+  entryPath        String?
+  createdAt        DateTime @default(now())
+  importedByUserId String?
+  importedByUser   User?    @relation(fields: [importedByUserId], references: [id])
+  isPrivate        Boolean  @default(false)
+  screenshotPaths  String?
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  githubLogin   String?
+  createdAt     DateTime  @default(now())
+  accounts      Account[]
+  projects      Project[]
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
 }

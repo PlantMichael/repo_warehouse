@@ -2,19 +2,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { prisma } from "@/lib/prisma";
+import { getProjectWithScreenshotBackfill } from "@/lib/projects";
+import { parseScreenshotPaths } from "@/lib/screenshots";
 import PreviewFrame from "@/components/PreviewFrame";
 import DeleteButton from "@/components/DeleteButton";
+import ScreenshotGallery from "@/components/ScreenshotGallery";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = await prisma.project.findUnique({ where: { id } });
+  const project = await getProjectWithScreenshotBackfill(id);
 
   if (!project) {
     notFound();
   }
+
+  const screenshotPaths = parseScreenshotPaths(project.screenshotPaths) ?? [];
 
   return (
     <div className="space-y-8">
@@ -72,6 +76,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       </div>
+
+      {screenshotPaths.length > 0 && (
+        <section>
+          <h2 className="text-lg font-medium mb-2">Screenshots</h2>
+          <ScreenshotGallery projectId={project.id} paths={screenshotPaths} />
+        </section>
+      )}
 
       <section>
         <h2 className="text-lg font-medium mb-2">README</h2>

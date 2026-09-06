@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth, getGitHubAccessToken } from "@/auth";
 import {
   checkStaticEntry,
   fetchReadme,
   fetchRepoMetadata,
+  fetchRepoRootEntries,
   GitHubError,
   parseRepoUrl,
 } from "@/lib/github";
+import { filterPngPaths } from "@/lib/screenshots";
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim();
@@ -29,6 +32,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Sign in with GitHub to add a repository." }, { status: 401 });
+  }
+
   let body: { repoUrl?: string };
   try {
     body = await req.json();
@@ -56,12 +64,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ project: existing, alreadyExisted: true }, { status: 200 });
   }
 
+  const accessToken = (await getGitHubAccessToken(session.user.id)) ?? undefined;
+
   try {
-    const metadata = await fetchRepoMetadata(ref);
-    const [readme, entryPath] = await Promise.all([
-      fetchReadme(ref, metadata.defaultBranch),
-      checkStaticEntry(ref, metadata.defaultBranch),
+    const metadata = await fetchRepoMetadata(ref, accessToken);
+    const [readme, entryPath, rootEntries] = await Promise.all([
+      fetchReadme(ref, metadata.defaultBranch, accessToken),
+      checkStaticEntry(ref, metadata.defaultBranch, accessToken),
+      fetchRepoRootEntries(ref, metadata.defaultBranch, accessToken),
     ]);
+    const screenshotPaths = filterPngPaths(rootEntries);
 
     const project = await prisma.project.create({
       data: {
@@ -75,6 +87,9 @@ export async function POST(req: NextRequest) {
         readme,
         isStatic: entryPath !== null,
         entryPath,
+        importedByUserId: session.user.id,
+        isPrivate: metadata.isPrivate,
+        screenshotPaths: JSON.stringify(screenshotPaths),
       },
     });
 

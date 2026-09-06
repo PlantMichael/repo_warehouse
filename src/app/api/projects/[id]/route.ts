@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getProjectWithScreenshotBackfill } from "@/lib/projects";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = await prisma.project.findUnique({ where: { id } });
+  const project = await getProjectWithScreenshotBackfill(id);
 
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });

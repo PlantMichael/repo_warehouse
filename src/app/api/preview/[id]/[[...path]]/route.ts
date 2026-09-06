@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchRawFile } from "@/lib/github";
+import { fetchAuthenticatedFile } from "@/lib/github-content";
+import { getGitHubAccessToken } from "@/auth";
 import { injectBase, isPathSafe, mimeFor } from "@/lib/preview";
 
 export async function GET(
@@ -21,7 +23,32 @@ export async function GET(
   }
 
   const ref = { owner: project.owner, name: project.name };
-  const file = await fetchRawFile(ref, project.defaultBranch, requestedPath);
+
+  let file: { body: ArrayBuffer } | null;
+  if (project.isPrivate) {
+    const accessToken = project.importedByUserId
+      ? await getGitHubAccessToken(project.importedByUserId)
+      : null;
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "This private repository's preview is no longer accessible." },
+        { status: 403 }
+      );
+    }
+    const result = await fetchAuthenticatedFile(ref, project.defaultBranch, requestedPath, accessToken);
+    if (!result.ok) {
+      if (result.status === 401 || result.status === 403) {
+        return NextResponse.json(
+          { error: "This private repository's preview is no longer accessible." },
+          { status: 403 }
+        );
+      }
+      return NextResponse.json({ error: `File not found: ${requestedPath}` }, { status: 404 });
+    }
+    file = { body: result.body };
+  } else {
+    file = await fetchRawFile(ref, project.defaultBranch, requestedPath);
+  }
 
   if (!file) {
     return NextResponse.json({ error: `File not found: ${requestedPath}` }, { status: 404 });
